@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lyrics to ASCII Art</title>
+  <style>
+    :root {
+      --color-primary: #ee75d2;
+      --color-secondary: #75d8ee;
+      --color-tertiary: #deee75;
+      --color-quaternary: #9375ee;
+      --color-surface: #271c22;
+      --brightness: 1.4;
+      font-size: 80%;
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #000000;
+      color: var(--color-primary);
+      overflow: hidden;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #output {
+      position: relative;
+      text-align: center;
+      font-family: "SF Mono", monospace;
+      overflow: hidden;
+      filter: drop-shadow(
+          0 0 7rem color-mix(in srgb, var(--color), transparent 20%)
+        )
+        brightness(var(--brightness));
+      white-space: nowrap;
+      background: black;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    #prerender {
+      display: none;
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div id="output"></div>
+</div>
+
+<canvas id="prerender" width="150" height="50"></canvas>
+
+<script>
+  (() => {
+    const config = {
+      lyrics: [
+        { text: "Do you think",       showMs: 2000, hideMs: 500 },
+        { text: "I have forgotten",   showMs: 3500, hideMs: 1000 },
+        { text: "About you?",         showMs: 4000, hideMs: 1500 },
+        { text: "There was something",showMs: 2500, hideMs: 400 },
+        { text: "'bout you",          showMs: 2000, hideMs: 800 },
+        { text: "That now I can't remember", showMs: 3500, hideMs: 2000 } 
+      ],
+      isLooping: true,      
+      maxColorIndex: 700    
+    };
+
+    const canvas = document.getElementById("prerender");
+    const output = document.getElementById("output");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    const charsFixed = [
+      "_", ".", ",", "-", "=", "+", "i", "s", "c", "b", "a", "!", "?",
+      "0", "1", "2", "3", "4", "5", "6",
+      ["9", "8"],
+      ["✚", "✚", "✚", "✚", "✚", "⚛︎"],
+      ["☺︎", "☹︎"],
+      "☀︎",
+      ["@", "#"],
+      ["X", "Y", "Z"],
+      "'"
+    ];
+
+    let chars = [...charsFixed];
+    let charsLength = chars.length;
+    
+    let currentLyricIndex = 0;
+    let lastTime = 0;
+    let timeAccumulator = 0;
+    let isShowing = true;
+
+    const drawTextToCanvas = (time) => {
+      const w = canvas.width;
+      const h = canvas.height;
+
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, w, h);
+
+      if (!isShowing) return; 
+
+      const currentText = config.lyrics[currentLyricIndex].text;
+
+      ctx.fillStyle = "white"; 
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      
+      const fontSize = 14; 
+      ctx.font = `900 ${fontSize}px "Arial Black", Impact, sans-serif`;
+      
+      const words = currentText.split(" ");
+      let lines = [];
+      let currentLine = words[0] || "";
+
+      for (let i = 1; i < words.length; i++) {
+        let word = words[i];
+        let width = ctx.measureText(currentLine + " " + word).width;
+        if (width < w - 10) { 
+          currentLine += " " + word;
+        } else {
+          lines.push(currentLine);
+          currentLine = word;
+        }
+      }
+      lines.push(currentLine);
+
+      const lineHeight = fontSize + 2; 
+      const totalHeight = lines.length * lineHeight;
+      
+      let startY = (h / 2) - (totalHeight / 2) + (lineHeight / 2);
+
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], w / 2, startY + (i * lineHeight));
+      }
+    };
+
+    const updateASCII = (time) => {
+      if (lastTime === 0) lastTime = time;
+      const deltaTime = time - lastTime;
+      lastTime = time;
+      timeAccumulator += deltaTime;
+
+      const currentLyric = config.lyrics[currentLyricIndex];
+      const currentPhaseDuration = isShowing ? currentLyric.showMs : currentLyric.hideMs;
+
+      if (timeAccumulator > currentPhaseDuration) {
+        timeAccumulator = 0;
+        if (isShowing) {
+          isShowing = false;
+        } else {
+          isShowing = true;
+          currentLyricIndex++;
+          if (currentLyricIndex >= config.lyrics.length) {
+            currentLyricIndex = config.isLooping ? 0 : config.lyrics.length - 1;
+          }
+        }
+      }
+
+      drawTextToCanvas(time);
+
+      const w = canvas.width;
+      const h = canvas.height;
+      const data = ctx.getImageData(0, 0, w, h).data;
+
+      let outputText = "";
+      
+      for (let y = 0; y < h; y++) {
+        let row = "";
+        for (let x = 0; x < w; x++) {
+          const index = (x + y * w) * 4;
+          const r = data[index];
+          const g = data[index + 1];
+          const b = data[index + 2];
+          
+          const c = (r + g + b) / 3;
+
+          const charIndex = Math.floor(
+            (charsLength * ((c * 100) / config.maxColorIndex)) / 100
+          );
+          
+          const safeCharIndex = Math.min(Math.max(charIndex, 0), charsLength - 1);
+          const result = chars[safeCharIndex];
+          
+          const char = Array.isArray(result)
+            ? result[Math.floor(Math.random() * result.length)]
+            : result;
+
+          row += `<span style="color: rgb(${r}, ${g}, ${b});">${char ?? "&nbsp;"}</span>`;
+        }
+        outputText += `<div>${row}</div>`;
+      }
+
+      output.innerHTML = outputText;
+      output.style.setProperty("--color", `rgb(${data[0]}, ${data[1]}, ${data[2]})`);
+
+      requestAnimationFrame(updateASCII);
+    };
+
+    requestAnimationFrame(updateASCII);
+  })();
+</script>
+
+</body>
+</html>
